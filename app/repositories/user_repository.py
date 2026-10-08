@@ -14,7 +14,7 @@ class UserRepository:
         return self.db.scalar(statement)
 
     def get_by_id(self, user_id: int) -> User | None:
-        return self.db.query(User).filter(User.id == user_id).first()
+        return self.db.get(User, user_id)
 
     def get_all(self) -> list[User]:
         return self.db.query(User).all()
