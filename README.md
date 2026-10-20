@@ -558,4 +558,23 @@ CampaignRepository
 PostgreSQL
 ```
 
-A campaign belongs to the
+A campaign belongs to the authenticated user and can contain multiple generation records.
+
+---
+
+# 12. Product API
+
+Authenticated users can manage their own products through `/products`. Product
+records include a required name and optional description, website, and category.
+A user can only list, retrieve, update, or delete products they own.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/products` | Create a product |
+| `GET` | `/products` | List the authenticated user's products |
+| `GET` | `/products/{product_id}` | Retrieve an owned product |
+| `PUT` | `/products/{product_id}` | Replace an owned product's details |
+| `DELETE` | `/products/{product_id}` | Delete an owned product |
+
+Requests use a Bearer access token. The `products` table is created by the
+Alembic migration `a8c2d91f4b63_create_products_table.py`.
