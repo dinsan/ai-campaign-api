@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends
 
 from app.api.users import router as users_router
 from app.api.auth import router as auth_router
+from app.api.products import router as products_router
 from app.core.dependencies import get_current_user
 
 app = FastAPI(
@@ -17,6 +18,7 @@ app.include_router(
 
 
 app.include_router(auth_router)
+app.include_router(products_router)
 
 
 @app.get("/health")
