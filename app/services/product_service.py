@@ -1,5 +1,6 @@
 from app.models.product import Product
 from app.repositories.category_repository import CategoryRepository
+from app.repositories.pagination import DEFAULT_LIMIT
 from app.repositories.product_repository import ProductRepository
 from app.schemas.product import ProductCreate
 
@@ -13,8 +14,13 @@ class ProductService:
         self.repository = repository
         self.category_repository = category_repository
 
-    def list_products(self, owner_id: int) -> list[Product]:
-        return self.repository.get_all_by_owner(owner_id)
+    def list_products(
+        self,
+        owner_id: int,
+        limit: int = DEFAULT_LIMIT,
+        offset: int = 0,
+    ) -> list[Product]:
+        return self.repository.get_all_by_owner(owner_id, limit=limit, offset=offset)
 
     def get_product(self, product_id: int, owner_id: int) -> Product:
         product = self.repository.get_by_id(product_id, owner_id)

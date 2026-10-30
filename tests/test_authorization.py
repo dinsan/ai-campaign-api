@@ -237,7 +237,7 @@ class RouteAuthorizationTests(unittest.TestCase):
 
         response = self.client.put(
             f"/api/v1/users/{viewer_id}",
-            json={"email": "viewer@example.com", "password": "secret123", "role": "editor"},
+            json={"email": "viewer@example.com", "role": "editor"},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -250,7 +250,62 @@ class RouteAuthorizationTests(unittest.TestCase):
         self.as_role(Role.ADMIN)
         self.client.put(
             f"/api/v1/users/{viewer_id}",
-            json={"email": "viewer@example.com", "password": "secret123", "role": "viewer"},
+            json={"email": "viewer@example.com", "role": "viewer"},
+        )
+
+    def test_admin_cannot_change_its_own_role(self):
+        self.as_role(Role.ADMIN)
+        admin_id = self.user_ids[Role.ADMIN]
+
+        response = self.client.put(
+            f"/api/v1/users/{admin_id}",
+            json={"email": "admin@example.com", "role": "viewer"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.client.get(f"/api/v1/users/{admin_id}").json()["role"], "admin")
+
+    def test_admin_can_still_update_its_own_email_keeping_role(self):
+        self.as_role(Role.ADMIN)
+        admin_id = self.user_ids[Role.ADMIN]
+
+        response = self.client.put(
+            f"/api/v1/users/{admin_id}",
+            json={"email": "admin@example.com", "role": "admin"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_admin_cannot_delete_its_own_account(self):
+        self.as_role(Role.ADMIN)
+        admin_id = self.user_ids[Role.ADMIN]
+
+        self.assertEqual(self.client.delete(f"/api/v1/users/{admin_id}").status_code, 400)
+        self.assertEqual(self.client.get(f"/api/v1/users/{admin_id}").status_code, 200)
+
+    def test_admin_can_change_role_without_resetting_password(self):
+        self.as_role(Role.ADMIN)
+        editor_id = self.user_ids[Role.EDITOR]
+
+        response = self.client.put(
+            f"/api/v1/users/{editor_id}",
+            json={"email": "editor@example.com", "role": "editor"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with self.SessionLocal() as db:
+            self.assertEqual(db.get(User, editor_id).password_hash, "hash")
+
+    def test_list_endpoints_enforce_pagination_bounds(self):
+        self.as_role(Role.ADMIN)
+        for url in ["/api/v1/products", "/api/v1/categories", "/api/v1/users"]:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url, params={"limit": 0}).status_code, 422)
+                self.assertEqual(self.client.get(url, params={"limit": 201}).status_code, 422)
+                self.assertEqual(self.client.get(url, params={"offset": -1}).status_code, 422)
+                self.assertEqual(self.client.get(url, params={"limit": 1, "offset": 0}).status_code, 200)
+        self.assertEqual(
+            self.client.get("/api/v1/search", params={"q": "bike", "limit": 101}).status_code, 422
         )
 
     def test_role_is_validated(self):

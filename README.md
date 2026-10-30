@@ -671,7 +671,9 @@ Managing roles:
 
 - Only administrators can call `/api/v1/users`. They set a role when creating
   a user (`"role": "editor"`, default `viewer`) and change it with
-  `PUT /api/v1/users/{user_id}`.
+  `PUT /api/v1/users/{user_id}` (`password` is optional there, so changing a
+  role never resets a password). Administrators cannot change their own role
+  or delete their own account.
 - Migration `d9b1e6c27a40_add_user_role.py` adds the column. Accounts that
   existed before the migration become `editor` so nobody loses access they
   already had; new accounts default to `viewer`.
@@ -695,7 +697,7 @@ own.
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/v1/products` | Create a product |
-| `GET` | `/api/v1/products` | List the authenticated user's products |
+| `GET` | `/api/v1/products?limit=&offset=` | List the authenticated user's products (paginated) |
 | `GET` | `/api/v1/products/{product_id}` | Retrieve an owned product |
 | `PUT` | `/api/v1/products/{product_id}` | Replace an owned product's details |
 | `DELETE` | `/api/v1/products/{product_id}` | Delete an owned product |
@@ -721,7 +723,7 @@ own.
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/v1/categories` | Create a category (`409` if the name is already used) |
-| `GET` | `/api/v1/categories` | List the authenticated user's categories |
+| `GET` | `/api/v1/categories?limit=&offset=` | List the authenticated user's categories (paginated) |
 | `GET` | `/api/v1/categories/{category_id}` | Retrieve an owned category |
 | `PUT` | `/api/v1/categories/{category_id}` | Replace an owned category's details |
 | `DELETE` | `/api/v1/categories/{category_id}` | Delete an owned category |
@@ -752,7 +754,7 @@ Authenticated users can search their own products and categories in one call.
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/v1/search?q=<text>` | Find products and categories whose name contains `q` |
+| `GET` | `/api/v1/search?q=<text>&limit=` | Find products and categories whose name contains `q` (at most `limit` of each) |
 
 Matching is case-insensitive and partial (`bik` matches `Electric Bike`), and
 `%`/`_` in the query are treated literally. A blank `q` is rejected with `422`.
@@ -800,3 +802,33 @@ SearchService
 
 No schema change is required; search only reads the existing `products` and
 `categories` tables.
+
+---
+
+# 17. Security & Performance Notes
+
+What the application enforces today:
+
+| Area | Measure |
+| --- | --- |
+| Passwords | Argon2 hashing; 8–128 characters on creation; only the upper bound on login so older accounts still work |
+| Login | Constant-time behaviour: an unknown email still runs a password verification, so latency does not reveal which emails are registered |
+| Emails | Normalised to lower case on write and compared case-insensitively, so one mailbox cannot register twice |
+| JWT | `JWT_SECRET_KEY` must be at least 32 characters; the app refuses to start otherwise. Algorithm pinned, `sub`/`exp` required |
+| Roles | Enforced per route (section 13). An administrator cannot demote or delete their own account |
+| Concurrency | Unique/foreign-key violations are caught at commit and returned as `409`/`400`, never `500` |
+| Lists | Every list endpoint is ordered by id and paginated (`limit` ≤ 200, default 50; `offset`). Search caps each section (`limit` ≤ 100, default 20) |
+| Queries | Owner-scoped columns are indexed; search preloads linked rows (no N+1) |
+| Secrets | `.env` is git-ignored; `.env.example` documents the variables |
+
+Known gaps to address before production (not yet implemented):
+
+- **Rate limiting / lockout** on `POST /api/v1/auth/login` (brute force).
+- **Refresh tokens / revocation**: access tokens are valid for 30 minutes and
+  cannot be revoked early.
+- **Self-service password change** and password reset flow.
+- **Search indexing**: `ILIKE '%term%'` scans an owner's rows. Fine at current
+  scale; add a PostgreSQL `pg_trgm` GIN index on `products.name` and
+  `categories.name` when datasets grow.
+- **CORS / HTTPS / security headers** are expected to be handled at the
+  reverse proxy, and **audit logging** is not in place.

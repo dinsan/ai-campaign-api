@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.authorization import Permission
@@ -6,6 +6,7 @@ from app.core.dependencies import require_permissions
 from app.database.dependencies import get_db
 from app.models.user import User
 from app.repositories.category_repository import CategoryRepository
+from app.repositories.pagination import DEFAULT_LIMIT, MAX_LIMIT
 from app.schemas.category import CategoryCreate, CategoryResponse
 from app.services.category_service import CategoryService
 
@@ -40,11 +41,13 @@ def create_category(
 
 @router.get("", response_model=list[CategoryResponse])
 def list_categories(
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permissions(Permission.CATEGORIES_READ)),
 ):
     service = CategoryService(CategoryRepository(db))
-    return service.list_categories(current_user.id)
+    return service.list_categories(current_user.id, limit=limit, offset=offset)
 
 
 @router.get("/{category_id}", response_model=CategoryResponse)

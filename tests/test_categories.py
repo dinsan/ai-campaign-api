@@ -2,7 +2,6 @@ import unittest
 from unittest.mock import MagicMock
 
 from sqlalchemy import create_engine
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database.base import Base
@@ -74,13 +73,29 @@ class CategoryRepositoryTests(unittest.TestCase):
         self.assertIsNotNone(category.id)
 
     def test_duplicate_name_for_same_owner_is_rejected_by_database(self):
-        with self.assertRaises(IntegrityError):
+        # Simulates two requests passing the service-level duplicate check at
+        # the same time: the unique constraint must still win, and surface as
+        # a domain error rather than a 500.
+        with self.assertRaisesRegex(ValueError, "Category name already exists"):
             self.repository.create(
                 owner_id=self.owner.id,
                 name="Transport",
                 description=None,
             )
-        self.db.rollback()
+
+        # The session is usable again afterwards.
+        self.assertEqual(len(self.repository.get_all_by_owner(self.owner.id)), 1)
+
+    def test_list_categories_is_ordered_and_paginated(self):
+        for name in ["Food", "Apparel", "Toys"]:
+            self.db.add(Category(owner_id=self.owner.id, name=name))
+        self.db.commit()
+
+        first_page = self.repository.get_all_by_owner(self.owner.id, limit=2, offset=0)
+        second_page = self.repository.get_all_by_owner(self.owner.id, limit=2, offset=2)
+
+        self.assertEqual([c.name for c in first_page], ["Transport", "Food"])
+        self.assertEqual([c.name for c in second_page], ["Apparel", "Toys"])
 
     def test_update_changes_owned_category(self):
         category = self.repository.update(
@@ -136,10 +151,10 @@ class CategoryServiceTests(unittest.TestCase):
         categories = [Category(id=1, owner_id=7, name="Transport")]
         self.repository.get_all_by_owner.return_value = categories
 
-        result = self.service.list_categories(7)
+        result = self.service.list_categories(7, limit=10, offset=5)
 
         self.assertEqual(result, categories)
-        self.repository.get_all_by_owner.assert_called_once_with(7)
+        self.repository.get_all_by_owner.assert_called_once_with(7, limit=10, offset=5)
 
     def test_get_category_scopes_to_owner(self):
         category = Category(id=1, owner_id=7, name="Transport")

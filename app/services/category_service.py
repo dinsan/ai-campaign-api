@@ -1,5 +1,6 @@
 from app.models.category import Category
 from app.repositories.category_repository import CategoryRepository
+from app.repositories.pagination import DEFAULT_LIMIT
 from app.schemas.category import CategoryCreate
 
 
@@ -7,8 +8,13 @@ class CategoryService:
     def __init__(self, repository: CategoryRepository):
         self.repository = repository
 
-    def list_categories(self, owner_id: int) -> list[Category]:
-        return self.repository.get_all_by_owner(owner_id)
+    def list_categories(
+        self,
+        owner_id: int,
+        limit: int = DEFAULT_LIMIT,
+        offset: int = 0,
+    ) -> list[Category]:
+        return self.repository.get_all_by_owner(owner_id, limit=limit, offset=offset)
 
     def get_category(self, category_id: int, owner_id: int) -> Category:
         category = self.repository.get_by_id(category_id, owner_id)

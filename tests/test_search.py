@@ -89,6 +89,11 @@ class SearchRepositoryTests(unittest.TestCase):
         self.assertEqual(len(self.product_repository.search_by_name(self.owner.id, "%")), 1)
         self.assertEqual(len(self.product_repository.search_by_name(self.owner.id, "_")), 0)
 
+    def test_product_search_respects_limit(self):
+        products = self.product_repository.search_by_name(self.owner.id, "bike", limit=1)
+
+        self.assertEqual([product.name for product in products], ["Bike helmet"])
+
     def test_product_search_returns_empty_list_when_nothing_matches(self):
         self.assertEqual(self.product_repository.search_by_name(self.owner.id, "car"), [])
 
@@ -126,18 +131,18 @@ class SearchServiceTests(unittest.TestCase):
         self.product_repository.search_by_name.return_value = products
         self.category_repository.search_by_name.return_value = categories
 
-        result = self.service.search(7, "bike")
+        result = self.service.search(7, "bike", limit=5)
 
         self.assertEqual(result, SearchResult(query="bike", products=products, categories=categories))
-        self.product_repository.search_by_name.assert_called_once_with(7, "bike")
-        self.category_repository.search_by_name.assert_called_once_with(7, "bike")
+        self.product_repository.search_by_name.assert_called_once_with(7, "bike", limit=5)
+        self.category_repository.search_by_name.assert_called_once_with(7, "bike", limit=5)
 
     def test_search_trims_surrounding_whitespace(self):
         result = self.service.search(7, "  bike  ")
 
         self.assertEqual(result.query, "bike")
-        self.product_repository.search_by_name.assert_called_once_with(7, "bike")
-        self.category_repository.search_by_name.assert_called_once_with(7, "bike")
+        self.product_repository.search_by_name.assert_called_once_with(7, "bike", limit=20)
+        self.category_repository.search_by_name.assert_called_once_with(7, "bike", limit=20)
 
     def test_search_rejects_blank_query(self):
         with self.assertRaisesRegex(ValueError, "Search query must not be empty"):

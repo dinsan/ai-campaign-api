@@ -8,7 +8,11 @@ from app.models.user import User
 from app.repositories.category_repository import CategoryRepository
 from app.repositories.product_repository import ProductRepository
 from app.schemas.search import SearchResponse
-from app.services.search_service import SearchService
+from app.services.search_service import (
+    DEFAULT_SEARCH_LIMIT,
+    MAX_SEARCH_LIMIT,
+    SearchService,
+)
 
 
 router = APIRouter(
@@ -24,6 +28,12 @@ def search(
         max_length=255,
         description="Text to look for in product and category names",
     ),
+    limit: int = Query(
+        DEFAULT_SEARCH_LIMIT,
+        ge=1,
+        le=MAX_SEARCH_LIMIT,
+        description="Maximum number of products and of categories to return",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(
         require_permissions(Permission.PRODUCTS_READ, Permission.CATEGORIES_READ)
@@ -31,7 +41,7 @@ def search(
 ):
     service = SearchService(ProductRepository(db), CategoryRepository(db))
     try:
-        return service.search(current_user.id, q)
+        return service.search(current_user.id, q, limit=limit)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

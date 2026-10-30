@@ -36,6 +36,34 @@ class ProductRepositoryTests(unittest.TestCase):
 
         self.assertEqual([product.id for product in products], [self.product.id])
 
+    def test_list_products_is_ordered_and_paginated(self):
+        for name in ["Scooter", "Helmet", "Lock"]:
+            self.db.add(Product(owner_id=self.owner.id, name=name))
+        self.db.commit()
+
+        first_page = self.repository.get_all_by_owner(self.owner.id, limit=2, offset=0)
+        second_page = self.repository.get_all_by_owner(self.owner.id, limit=2, offset=2)
+
+        self.assertEqual([p.name for p in first_page], ["Bike", "Scooter"])
+        self.assertEqual([p.name for p in second_page], ["Helmet", "Lock"])
+
+    def test_create_product_with_vanished_category_raises_domain_error(self):
+        # The FK check at commit time is the last line of defence when a
+        # category is deleted between the service check and the insert.
+        # (SQLite only enforces foreign keys when asked to.)
+        self.db.execute(__import__("sqlalchemy").text("PRAGMA foreign_keys=ON"))
+
+        with self.assertRaisesRegex(ValueError, "Category not found"):
+            self.repository.create(
+                owner_id=self.owner.id,
+                name="Orphan",
+                description=None,
+                website=None,
+                category_id=999,
+            )
+
+        self.assertEqual(len(self.repository.get_all_by_owner(self.owner.id)), 1)
+
     def test_get_product_hides_products_owned_by_another_user(self):
         product = self.repository.get_by_id(self.product.id, self.other_owner.id)
 
@@ -68,10 +96,10 @@ class ProductServiceTests(unittest.TestCase):
         products = [Product(id=1, owner_id=7, name="Bike")]
         self.repository.get_all_by_owner.return_value = products
 
-        result = self.service.list_products(7)
+        result = self.service.list_products(7, limit=10, offset=5)
 
         self.assertEqual(result, products)
-        self.repository.get_all_by_owner.assert_called_once_with(7)
+        self.repository.get_all_by_owner.assert_called_once_with(7, limit=10, offset=5)
 
     def test_get_product_scopes_to_owner(self):
         product = Product(id=1, owner_id=7, name="Bike")

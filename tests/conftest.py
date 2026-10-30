@@ -8,4 +8,4 @@ made to the database during the unit tests.
 import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key")
+os.environ.setdefault("JWT_SECRET_KEY", "unit-test-secret-key-not-used-for-real-tokens")

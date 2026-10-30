@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.authorization import Permission
@@ -6,6 +6,7 @@ from app.core.dependencies import require_permissions
 from app.database.dependencies import get_db
 from app.models.user import User
 from app.repositories.category_repository import CategoryRepository
+from app.repositories.pagination import DEFAULT_LIMIT, MAX_LIMIT
 from app.repositories.product_repository import ProductRepository
 from app.schemas.product import ProductCreate, ProductResponse
 from app.services.product_service import ProductService
@@ -47,11 +48,13 @@ def create_product(
 
 @router.get("", response_model=list[ProductResponse])
 def list_products(
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permissions(Permission.PRODUCTS_READ)),
 ):
     service = _build_service(db)
-    return service.list_products(current_user.id)
+    return service.list_products(current_user.id, limit=limit, offset=offset)
 
 
 @router.get("/{product_id}", response_model=ProductResponse)

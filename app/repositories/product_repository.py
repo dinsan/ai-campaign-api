@@ -1,7 +1,9 @@
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.product import Product
+from app.repositories.pagination import DEFAULT_LIMIT
 from app.repositories.search import LIKE_ESCAPE, contains_pattern
 
 
@@ -9,8 +11,19 @@ class ProductRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_all_by_owner(self, owner_id: int) -> list[Product]:
-        statement = select(Product).where(Product.owner_id == owner_id)
+    def get_all_by_owner(
+        self,
+        owner_id: int,
+        limit: int = DEFAULT_LIMIT,
+        offset: int = 0,
+    ) -> list[Product]:
+        statement = (
+            select(Product)
+            .where(Product.owner_id == owner_id)
+            .order_by(Product.id)
+            .limit(limit)
+            .offset(offset)
+        )
         return list(self.db.scalars(statement))
 
     def get_by_id(self, product_id: int, owner_id: int) -> Product | None:
@@ -20,7 +33,12 @@ class ProductRepository:
         )
         return self.db.scalar(statement)
 
-    def search_by_name(self, owner_id: int, query: str) -> list[Product]:
+    def search_by_name(
+        self,
+        owner_id: int,
+        query: str,
+        limit: int = DEFAULT_LIMIT,
+    ) -> list[Product]:
         """Case-insensitive partial match on name, with the category preloaded."""
         statement = (
             select(Product)
@@ -30,6 +48,7 @@ class ProductRepository:
             )
             .options(joinedload(Product.category))
             .order_by(Product.name, Product.id)
+            .limit(limit)
         )
         return list(self.db.scalars(statement))
 
@@ -49,7 +68,7 @@ class ProductRepository:
             category_id=category_id,
         )
         self.db.add(product)
-        self.db.commit()
+        self._commit_or_raise_missing_category()
         self.db.refresh(product)
         return product
 
@@ -70,7 +89,7 @@ class ProductRepository:
         product.description = description
         product.website = website
         product.category_id = category_id
-        self.db.commit()
+        self._commit_or_raise_missing_category()
         self.db.refresh(product)
         return product
 
@@ -81,3 +100,15 @@ class ProductRepository:
 
         self.db.delete(product)
         self.db.commit()
+
+    def _commit_or_raise_missing_category(self) -> None:
+        """Commit, turning a foreign-key violation into a domain error.
+
+        The service verifies the category exists first, but it may be deleted
+        by a concurrent request before this commit lands.
+        """
+        try:
+            self.db.commit()
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise ValueError("Category not found") from exc

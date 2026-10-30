@@ -13,6 +13,21 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Configure
+
+Copy `.env.example` to `.env` and fill in the values. `JWT_SECRET_KEY` must be
+at least 32 characters; generate one with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Then apply the database migrations:
+
+```bash
+alembic upgrade head
+```
+
 ## Run Locally
 
 ```bash
