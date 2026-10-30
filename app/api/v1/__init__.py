@@ -5,23 +5,19 @@ breaking changes later, add a sibling ``v2`` package with its own aggregate
 router and mount it next to this one in ``app.main``; v1 keeps working for
 existing clients.
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from app.api.v1.auth import router as auth_router
 from app.api.v1.categories import router as categories_router
 from app.api.v1.products import router as products_router
 from app.api.v1.search import router as search_router
 from app.api.v1.users import router as users_router
-from app.core.dependencies import get_current_user
 
 VERSION = "v1"
 
 router = APIRouter(prefix=f"/{VERSION}")
 
-router.include_router(
-    users_router,
-    dependencies=[Depends(get_current_user)],
-)
+router.include_router(users_router)
 router.include_router(auth_router)
 router.include_router(products_router)
 router.include_router(categories_router)

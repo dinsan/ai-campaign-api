@@ -1,6 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.authorization import Role
 from app.models.user import User
 
 
@@ -19,10 +20,11 @@ class UserRepository:
     def get_all(self) -> list[User]:
         return self.db.query(User).all()
 
-    def create(self, email: str, password_hash: str) -> User:
+    def create(self, email: str, password_hash: str, role: Role) -> User:
         user = User(
             email=email,
             password_hash=password_hash,
+            role=role,
         )
 
         self.db.add(user)
@@ -31,13 +33,20 @@ class UserRepository:
 
         return user
 
-    def update(self, user_id: int, email: str, password_hash: str) -> User:
+    def update(
+        self,
+        user_id: int,
+        email: str,
+        password_hash: str,
+        role: Role,
+    ) -> User:
         user = self.get_by_id(user_id)
         if user is None:
             raise ValueError("User not found")
 
         user.email = email
         user.password_hash = password_hash
+        user.role = role
         self.db.commit()
         self.db.refresh(user)
 

@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+from app.core.authorization import Role
 from app.models.user import User
 from app.schemas.auth import LoginRequest
 from app.schemas.user import UserCreate
@@ -27,8 +28,32 @@ class UserServiceTests(unittest.TestCase):
         self.repository.create.assert_called_once_with(
             email="test@example.com",
             password_hash="hashed-password",
+            role=Role.VIEWER,
         )
         self.assertEqual(result, created_user)
+
+    def test_create_user_defaults_to_viewer_role(self):
+        data = UserCreate(email="test@example.com", password="secret123")
+
+        self.assertEqual(data.role, Role.VIEWER)
+
+    def test_create_user_with_explicit_role(self):
+        self.repository.get_by_email.return_value = None
+
+        with patch("app.services.user_service.hash_password", return_value="hashed-password"):
+            self.service.create_user(
+                UserCreate(email="editor@example.com", password="secret123", role="editor")
+            )
+
+        self.repository.create.assert_called_once_with(
+            email="editor@example.com",
+            password_hash="hashed-password",
+            role=Role.EDITOR,
+        )
+
+    def test_create_user_rejects_unknown_role(self):
+        with self.assertRaises(ValueError):
+            UserCreate(email="test@example.com", password="secret123", role="superuser")
 
     def test_create_user_fails_for_duplicate_email(self):
         self.repository.get_by_email.return_value = User(
@@ -76,6 +101,23 @@ class UserServiceTests(unittest.TestCase):
             user_id=5,
             email="new@example.com",
             password_hash="hashed-password",
+            role=Role.VIEWER,
+        )
+
+    def test_update_user_can_change_role(self):
+        self.repository.get_by_email.return_value = None
+
+        with patch("app.services.user_service.hash_password", return_value="hashed-password"):
+            self.service.update_user(
+                5,
+                UserCreate(email="new@example.com", password="newsecret", role=Role.ADMIN),
+            )
+
+        self.repository.update.assert_called_once_with(
+            user_id=5,
+            email="new@example.com",
+            password_hash="hashed-password",
+            role=Role.ADMIN,
         )
 
     def test_update_user_fails_for_duplicate_email_on_other_account(self):

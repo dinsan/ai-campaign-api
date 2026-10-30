@@ -1,8 +1,9 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, Enum, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.authorization import Role
 from app.database.base import Base
 
 
@@ -21,6 +22,21 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
+    )
+
+    role: Mapped[Role] = mapped_column(
+        # Stored as a plain VARCHAR holding the enum value ("viewer", ...)
+        # rather than a native database enum type, so adding a role later
+        # is just a code change plus a data migration.
+        Enum(
+            Role,
+            native_enum=False,
+            length=20,
+            values_callable=lambda enum: [member.value for member in enum],
+        ),
+        nullable=False,
+        default=Role.VIEWER,
+        server_default=Role.VIEWER.value,
     )
 
     created_at: Mapped[datetime] = mapped_column(

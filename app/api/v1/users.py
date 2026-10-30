@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.authorization import Permission
+from app.core.dependencies import require_permissions
 from app.database.dependencies import get_db
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import UserCreate, UserResponse
@@ -10,6 +12,8 @@ from app.services.user_service import UserService
 router = APIRouter(
     prefix="/users",
     tags=["Users"],
+    # Creating users and changing roles is reserved for administrators.
+    dependencies=[Depends(require_permissions(Permission.USERS_MANAGE))],
 )
 
 

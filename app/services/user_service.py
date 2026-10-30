@@ -20,6 +20,7 @@ class UserService:
         return self.repository.create(
             email=data.email,
             password_hash=hashed_password,
+            role=data.role,
         )
 
     def get_user(self, user_id: int) -> User:
@@ -43,6 +44,7 @@ class UserService:
             user_id=user_id,
             email=data.email,
             password_hash=hashed_password,
+            role=data.role,
         )
 
     def delete_user(self, user_id: int) -> None:

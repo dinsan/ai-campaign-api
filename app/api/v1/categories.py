@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user
+from app.core.authorization import Permission
+from app.core.dependencies import require_permissions
 from app.database.dependencies import get_db
 from app.models.user import User
 from app.repositories.category_repository import CategoryRepository
@@ -25,7 +26,7 @@ def _status_code_for(exc: ValueError) -> int:
 def create_category(
     data: CategoryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions(Permission.CATEGORIES_WRITE)),
 ):
     service = CategoryService(CategoryRepository(db))
     try:
@@ -40,7 +41,7 @@ def create_category(
 @router.get("", response_model=list[CategoryResponse])
 def list_categories(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions(Permission.CATEGORIES_READ)),
 ):
     service = CategoryService(CategoryRepository(db))
     return service.list_categories(current_user.id)
@@ -50,7 +51,7 @@ def list_categories(
 def get_category(
     category_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions(Permission.CATEGORIES_READ)),
 ):
     service = CategoryService(CategoryRepository(db))
     try:
@@ -67,7 +68,7 @@ def update_category(
     category_id: int,
     data: CategoryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions(Permission.CATEGORIES_WRITE)),
 ):
     service = CategoryService(CategoryRepository(db))
     try:
@@ -83,7 +84,7 @@ def update_category(
 def delete_category(
     category_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions(Permission.CATEGORIES_WRITE)),
 ):
     service = CategoryService(CategoryRepository(db))
     try:

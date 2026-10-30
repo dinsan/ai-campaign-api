@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user
+from app.core.authorization import Permission
+from app.core.dependencies import require_permissions
 from app.database.dependencies import get_db
 from app.models.user import User
 from app.repositories.category_repository import CategoryRepository
@@ -32,7 +33,7 @@ def _status_code_for(exc: ValueError) -> int:
 def create_product(
     data: ProductCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions(Permission.PRODUCTS_WRITE)),
 ):
     service = _build_service(db)
     try:
@@ -47,7 +48,7 @@ def create_product(
 @router.get("", response_model=list[ProductResponse])
 def list_products(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions(Permission.PRODUCTS_READ)),
 ):
     service = _build_service(db)
     return service.list_products(current_user.id)
@@ -57,7 +58,7 @@ def list_products(
 def get_product(
     product_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions(Permission.PRODUCTS_READ)),
 ):
     service = _build_service(db)
     try:
@@ -74,7 +75,7 @@ def update_product(
     product_id: int,
     data: ProductCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions(Permission.PRODUCTS_WRITE)),
 ):
     service = _build_service(db)
     try:
@@ -90,7 +91,7 @@ def update_product(
 def delete_product(
     product_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions(Permission.PRODUCTS_WRITE)),
 ):
     service = _build_service(db)
     try:

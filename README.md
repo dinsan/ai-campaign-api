@@ -147,7 +147,9 @@ ai-campaign-api/
 │   │       └── users.py
 │   │
 │   ├── core/
+│   │   ├── authorization.py   # roles, permissions
 │   │   ├── config.py
+│   │   ├── dependencies.py    # get_current_user, require_permissions
 │   │   └── security.py
 │   │
 │   ├── database/
@@ -623,9 +625,69 @@ Rules:
 
 ---
 
-# 13. Product API
+# 13. Authorization (Roles & Permissions)
 
-Authenticated users can manage their own products through `/api/v1/products`. Product
+Authentication answers *who* is calling (`get_current_user`, section 10).
+Authorization answers *what they may do*. It is a separate mechanism in
+`app/core/authorization.py` and is enforced per route.
+
+Every user has exactly one role. Roles are cumulative:
+
+| Role | Read products / categories / search | Create, update, delete products & categories | Manage users & roles |
+| --- | --- | --- | --- |
+| `viewer` | yes | no | no |
+| `editor` | yes | yes | no |
+| `admin` | yes | yes | yes |
+
+Roles grant permissions (`products:read`, `products:write`, `categories:read`,
+`categories:write`, `users:manage`) and routes declare the permission they
+need:
+
+```python
+@router.delete("/{product_id}")
+def delete_product(
+    ...,
+    current_user: User = Depends(require_permissions(Permission.PRODUCTS_WRITE)),
+):
+```
+
+```text
+Request
+  │
+  ▼
+get_current_user        -> 401 if the token is missing or invalid
+  │
+  ▼
+require_permissions()   -> 403 if the role lacks the permission
+  │
+  ▼
+Route
+```
+
+The role is read from the database on every request, so changing it takes
+effect immediately without re-issuing tokens.
+
+Managing roles:
+
+- Only administrators can call `/api/v1/users`. They set a role when creating
+  a user (`"role": "editor"`, default `viewer`) and change it with
+  `PUT /api/v1/users/{user_id}`.
+- Migration `d9b1e6c27a40_add_user_role.py` adds the column. Accounts that
+  existed before the migration become `editor` so nobody loses access they
+  already had; new accounts default to `viewer`.
+- Bootstrap the first administrator directly in the database:
+
+```sql
+UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
+```
+
+---
+
+# 14. Product API
+
+Authenticated users can manage their own products through `/api/v1/products`.
+Reading requires the `products:read` permission (every role); creating,
+updating and deleting require `products:write` (`editor` and `admin`). Product
 records include a required name and optional description, website, and
 `category_id`. A user can only list, retrieve, update, or delete products they
 own.
@@ -648,10 +710,11 @@ otherwise the request is rejected with `400 Bad Request`. Sending
 
 ---
 
-# 14. Category API
+# 15. Category API
 
 Authenticated users can organise their products into categories through
-`/api/v1/categories`. A category has a required name (unique per user) and an optional
+`/api/v1/categories` (read: every role; write: `editor` and `admin`). A
+category has a required name (unique per user) and an optional
 description. A user can only list, retrieve, update, or delete categories they
 own.
 
@@ -683,7 +746,7 @@ category rows before dropping the old column, so no data is lost on upgrade.
 
 ---
 
-# 15. Search API
+# 16. Search API
 
 Authenticated users can search their own products and categories in one call.
 

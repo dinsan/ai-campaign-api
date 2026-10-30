@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user
+from app.core.authorization import Permission
+from app.core.dependencies import require_permissions
 from app.database.dependencies import get_db
 from app.models.user import User
 from app.repositories.category_repository import CategoryRepository
@@ -24,7 +25,9 @@ def search(
         description="Text to look for in product and category names",
     ),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_permissions(Permission.PRODUCTS_READ, Permission.CATEGORIES_READ)
+    ),
 ):
     service = SearchService(ProductRepository(db), CategoryRepository(db))
     try:
