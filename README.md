@@ -137,7 +137,14 @@ ai-campaign-api/
 ├── app/
 │   │
 │   ├── api/
-│   │   └── users.py
+│   │   ├── __init__.py        # mounts every API version under /api
+│   │   └── v1/
+│   │       ├── __init__.py    # aggregate router for /api/v1
+│   │       ├── auth.py
+│   │       ├── categories.py
+│   │       ├── products.py
+│   │       ├── search.py
+│   │       └── users.py
 │   │
 │   ├── core/
 │   │   ├── config.py
@@ -149,15 +156,26 @@ ai-campaign-api/
 │   │   └── session.py
 │   │
 │   ├── models/
+│   │   ├── category.py
+│   │   ├── product.py
 │   │   └── user.py
 │   │
 │   ├── repositories/
+│   │   ├── category_repository.py
+│   │   ├── product_repository.py
+│   │   ├── search.py
 │   │   └── user_repository.py
 │   │
 │   ├── schemas/
+│   │   ├── category.py
+│   │   ├── product.py
+│   │   ├── search.py
 │   │   └── user.py
 │   │
 │   ├── services/
+│   │   ├── category_service.py
+│   │   ├── product_service.py
+│   │   ├── search_service.py
 │   │   └── user_service.py
 │   │
 │   └── main.py
@@ -201,7 +219,7 @@ Responsibilities:
 Example:
 
 ```text
-POST /users
+POST /api/v1/users
 ```
 
 The API layer should not directly execute SQL queries or contain complex business logic.
@@ -408,7 +426,7 @@ Current registration architecture:
 ```text
 Client
   │
-  │ POST /users
+  │ POST /api/v1/users
   ▼
 FastAPI User Route
   │
@@ -497,7 +515,7 @@ JWT authentication will be introduced next.
 Expected flow:
 
 ```text
-POST /auth/login
+POST /api/v1/auth/login
         │
         ▼
 Find User
@@ -530,7 +548,7 @@ After authentication, users will be able to create campaigns.
 Example:
 
 ```text
-POST /campaigns
+POST /api/v1/campaigns
 
 {
     "name": "GreenRide Campaign",
@@ -562,19 +580,160 @@ A campaign belongs to the authenticated user and can contain multiple generation
 
 ---
 
-# 12. Product API
+# 12. API Versioning
 
-Authenticated users can manage their own products through `/products`. Product
-records include a required name and optional description, website, and category.
-A user can only list, retrieve, update, or delete products they own.
+All endpoints are served under a version prefix:
+
+```text
+/api/v1/...
+```
+
+Only `/health` is unversioned; it reports the versions currently available:
+
+```json
+{ "status": "ok", "service": "ai-campaign-api", "api_versions": ["v1"] }
+```
+
+How it is wired:
+
+```text
+app.main
+   │
+   └── app.api.router              prefix /api
+          │
+          └── app.api.v1.router    prefix /v1
+                 ├── auth
+                 ├── users
+                 ├── products
+                 ├── categories
+                 └── search
+```
+
+Rules:
+
+- Backwards-compatible changes (new endpoints, new optional fields) go into
+  the current version.
+- Breaking changes (renamed/removed fields, changed status codes, different
+  behaviour) require a new version. Add an `app/api/v2/` package with its own
+  aggregate router, register it in `app/api/__init__.py`, and leave `v1`
+  untouched so existing clients keep working.
+- Business logic stays in the service and repository layers, which are shared
+  by all versions. A new version normally only adds new route modules and
+  schemas.
+
+---
+
+# 13. Product API
+
+Authenticated users can manage their own products through `/api/v1/products`. Product
+records include a required name and optional description, website, and
+`category_id`. A user can only list, retrieve, update, or delete products they
+own.
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| `POST` | `/products` | Create a product |
-| `GET` | `/products` | List the authenticated user's products |
-| `GET` | `/products/{product_id}` | Retrieve an owned product |
-| `PUT` | `/products/{product_id}` | Replace an owned product's details |
-| `DELETE` | `/products/{product_id}` | Delete an owned product |
+| `POST` | `/api/v1/products` | Create a product |
+| `GET` | `/api/v1/products` | List the authenticated user's products |
+| `GET` | `/api/v1/products/{product_id}` | Retrieve an owned product |
+| `PUT` | `/api/v1/products/{product_id}` | Replace an owned product's details |
+| `DELETE` | `/api/v1/products/{product_id}` | Delete an owned product |
 
 Requests use a Bearer access token. The `products` table is created by the
 Alembic migration `a8c2d91f4b63_create_products_table.py`.
+
+A product can optionally be linked to one of the owner's categories by sending
+its id as `category_id`. The category must belong to the authenticated user;
+otherwise the request is rejected with `400 Bad Request`. Sending
+`"category_id": null` unlinks the product.
+
+---
+
+# 14. Category API
+
+Authenticated users can organise their products into categories through
+`/api/v1/categories`. A category has a required name (unique per user) and an optional
+description. A user can only list, retrieve, update, or delete categories they
+own.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/categories` | Create a category (`409` if the name is already used) |
+| `GET` | `/api/v1/categories` | List the authenticated user's categories |
+| `GET` | `/api/v1/categories/{category_id}` | Retrieve an owned category |
+| `PUT` | `/api/v1/categories/{category_id}` | Replace an owned category's details |
+| `DELETE` | `/api/v1/categories/{category_id}` | Delete an owned category |
+
+Relationship with products:
+
+```text
+User
+ │
+ ├── Category ──── * Product
+ │
+ └── Product (no category)
+```
+
+Deleting a category does **not** delete its products; their `category_id` is
+reset to `null` (`ON DELETE SET NULL`).
+
+The `categories` table and the `products.category_id` column are created by the
+Alembic migration `c4e7f3a9d215_create_categories_table.py`. That migration
+also converts any existing free-text `products.category` values into real
+category rows before dropping the old column, so no data is lost on upgrade.
+
+---
+
+# 15. Search API
+
+Authenticated users can search their own products and categories in one call.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/search?q=<text>` | Find products and categories whose name contains `q` |
+
+Matching is case-insensitive and partial (`bik` matches `Electric Bike`), and
+`%`/`_` in the query are treated literally. A blank `q` is rejected with `422`.
+
+The response has two sections. Matched products carry their linked category;
+matched categories carry their linked products:
+
+```json
+{
+  "query": "bike",
+  "products": [
+    {
+      "id": 1,
+      "name": "Electric Bike",
+      "description": null,
+      "website": "https://bikes.example.com/",
+      "category": { "id": 1, "name": "Transport", "description": "Ways to get around" }
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "Bikes",
+      "description": null,
+      "products": [
+        { "id": 1, "name": "Electric Bike", "description": null, "website": "https://bikes.example.com/" }
+      ]
+    }
+  ]
+}
+```
+
+Flow:
+
+```text
+GET /api/v1/search?q=bike
+        │
+        ▼
+SearchService
+        │
+        ├──── ProductRepository.search_by_name()   (category preloaded)
+        │
+        └──── CategoryRepository.search_by_name()  (products preloaded)
+```
+
+No schema change is required; search only reads the existing `products` and
+`categories` tables.

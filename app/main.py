@@ -1,9 +1,6 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 
-from app.api.users import router as users_router
-from app.api.auth import router as auth_router
-from app.api.products import router as products_router
-from app.core.dependencies import get_current_user
+from app.api import VERSIONS, router as api_router
 
 app = FastAPI(
     title="AI Campaign API",
@@ -11,14 +8,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
-#registration
-app.include_router(
-    users_router,
-    dependencies=[Depends(get_current_user)])
-
-
-app.include_router(auth_router)
-app.include_router(products_router)
+# All versioned endpoints live under /api/<version>/...
+app.include_router(api_router)
 
 
 @app.get("/health")
@@ -26,4 +17,5 @@ def health_check():
     return {
         "status": "ok",
         "service": "ai-campaign-api",
+        "api_versions": VERSIONS,
     }

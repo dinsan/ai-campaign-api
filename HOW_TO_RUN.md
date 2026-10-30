@@ -22,3 +22,12 @@ python -m uvicorn app.main:app --reload
 The API will be available at http://127.0.0.1:8000.
 
 For interactive API docs, visit http://127.0.0.1:8000/docs.
+
+All endpoints are versioned, e.g. http://127.0.0.1:8000/api/v1/products.
+Only the health check is unversioned: http://127.0.0.1:8000/health.
+
+## Run Tests
+
+```bash
+python -m pytest
+```

@@ -5,6 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.database.base import Base
+from app.models.category import Category
 from app.models.product import Product
 from app.models.user import User
 from app.repositories.product_repository import ProductRepository
@@ -40,11 +41,28 @@ class ProductRepositoryTests(unittest.TestCase):
 
         self.assertIsNone(product)
 
+    def test_create_product_stores_category_link(self):
+        category = Category(owner_id=self.owner.id, name="Transport")
+        self.db.add(category)
+        self.db.commit()
+
+        product = self.repository.create(
+            owner_id=self.owner.id,
+            name="Scooter",
+            description=None,
+            website=None,
+            category_id=category.id,
+        )
+
+        self.assertEqual(product.category_id, category.id)
+        self.assertEqual(product.category, category)
+
 
 class ProductServiceTests(unittest.TestCase):
     def setUp(self):
         self.repository = MagicMock()
-        self.service = ProductService(self.repository)
+        self.category_repository = MagicMock()
+        self.service = ProductService(self.repository, self.category_repository)
 
     def test_list_products_scopes_to_owner(self):
         products = [Product(id=1, owner_id=7, name="Bike")]
@@ -75,21 +93,51 @@ class ProductServiceTests(unittest.TestCase):
             name="Bike",
             description="Electric bike subscription",
             website="https://example.com",
-            category="Transport",
+            category_id=3,
         )
-        product = Product(id=1, owner_id=7, name="Bike")
+        product = Product(id=1, owner_id=7, name="Bike", category_id=3)
+        self.category_repository.get_by_id.return_value = Category(
+            id=3,
+            owner_id=7,
+            name="Transport",
+        )
         self.repository.create.return_value = product
 
         result = self.service.create_product(7, data)
 
         self.assertEqual(result, product)
+        self.category_repository.get_by_id.assert_called_once_with(3, 7)
         self.repository.create.assert_called_once_with(
             owner_id=7,
             name="Bike",
             description="Electric bike subscription",
             website="https://example.com/",
-            category="Transport",
+            category_id=3,
         )
+
+    def test_create_product_without_category_skips_category_lookup(self):
+        data = ProductCreate(name="Bike")
+
+        self.service.create_product(7, data)
+
+        self.category_repository.get_by_id.assert_not_called()
+        self.repository.create.assert_called_once_with(
+            owner_id=7,
+            name="Bike",
+            description=None,
+            website=None,
+            category_id=None,
+        )
+
+    def test_create_product_rejects_category_not_owned_by_user(self):
+        data = ProductCreate(name="Bike", category_id=3)
+        self.category_repository.get_by_id.return_value = None
+
+        with self.assertRaisesRegex(ValueError, "Category not found"):
+            self.service.create_product(7, data)
+
+        self.category_repository.get_by_id.assert_called_once_with(3, 7)
+        self.repository.create.assert_not_called()
 
     def test_update_product_scopes_to_owner(self):
         data = ProductCreate(name="Updated bike")
@@ -102,8 +150,37 @@ class ProductServiceTests(unittest.TestCase):
             name="Updated bike",
             description=None,
             website=None,
-            category=None,
+            category_id=None,
         )
+
+    def test_update_product_links_owned_category(self):
+        data = ProductCreate(name="Updated bike", category_id=3)
+        self.category_repository.get_by_id.return_value = Category(
+            id=3,
+            owner_id=7,
+            name="Transport",
+        )
+
+        self.service.update_product(1, 7, data)
+
+        self.category_repository.get_by_id.assert_called_once_with(3, 7)
+        self.repository.update.assert_called_once_with(
+            product_id=1,
+            owner_id=7,
+            name="Updated bike",
+            description=None,
+            website=None,
+            category_id=3,
+        )
+
+    def test_update_product_rejects_category_not_owned_by_user(self):
+        data = ProductCreate(name="Updated bike", category_id=3)
+        self.category_repository.get_by_id.return_value = None
+
+        with self.assertRaisesRegex(ValueError, "Category not found"):
+            self.service.update_product(1, 7, data)
+
+        self.repository.update.assert_not_called()
 
     def test_delete_product_scopes_to_owner(self):
         self.service.delete_product(1, 7)

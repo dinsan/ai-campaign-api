@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.dependencies import get_current_user
 from app.database.dependencies import get_db
 from app.models.user import User
+from app.repositories.category_repository import CategoryRepository
 from app.repositories.product_repository import ProductRepository
 from app.schemas.product import ProductCreate, ProductResponse
 from app.services.product_service import ProductService
@@ -15,14 +16,32 @@ router = APIRouter(
 )
 
 
+def _build_service(db: Session) -> ProductService:
+    return ProductService(ProductRepository(db), CategoryRepository(db))
+
+
+def _status_code_for(exc: ValueError) -> int:
+    # A missing category is a problem with the request body, not the URL,
+    # so it is reported as a bad request rather than a missing resource.
+    if "category" in str(exc).lower():
+        return status.HTTP_400_BAD_REQUEST
+    return status.HTTP_404_NOT_FOUND
+
+
 @router.post("", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 def create_product(
     data: ProductCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    service = ProductService(ProductRepository(db))
-    return service.create_product(current_user.id, data)
+    service = _build_service(db)
+    try:
+        return service.create_product(current_user.id, data)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_code_for(exc),
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("", response_model=list[ProductResponse])
@@ -30,7 +49,7 @@ def list_products(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    service = ProductService(ProductRepository(db))
+    service = _build_service(db)
     return service.list_products(current_user.id)
 
 
@@ -40,7 +59,7 @@ def get_product(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    service = ProductService(ProductRepository(db))
+    service = _build_service(db)
     try:
         return service.get_product(product_id, current_user.id)
     except ValueError as exc:
@@ -57,12 +76,12 @@ def update_product(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    service = ProductService(ProductRepository(db))
+    service = _build_service(db)
     try:
         return service.update_product(product_id, current_user.id, data)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=_status_code_for(exc),
             detail=str(exc),
         ) from exc
 
@@ -73,7 +92,7 @@ def delete_product(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    service = ProductService(ProductRepository(db))
+    service = _build_service(db)
     try:
         service.delete_product(product_id, current_user.id)
     except ValueError as exc:

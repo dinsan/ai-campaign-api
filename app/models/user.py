@@ -34,3 +34,9 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    categories: Mapped[list["Category"]] = relationship(
+        back_populates="owner",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
